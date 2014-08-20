@@ -90,41 +90,36 @@ function newF(rhs::Rhs;eps=1e-5,monitor=monitorarclength,g=gnull)
 
 end
 
-function meshinit(r0,u0;monitor=monitorarclength, args...)
-    npde  = 1
-    F     = newF(Rhs((r,u)->zero(u),npde);monitor=monitorarclength)
-    npts  = length(r0)
-    ny    = (npde+1)*npts+1
-    y0    = Array(eltype(r0),ny)
-    r0view = view(y0,2:npts+1)
-    u0view = reshape_view(view(y0,npts+2:ny),(npts,npde))
+function meshinit(r0,u0;monitor=monitorarclength, eps=1e-5, args...)
+    npts = length(r0)
+    dxi = 1/(npts-1)
 
-    y0[1]=0
-
-    for i = 1:npts
-        r0view[i]   = r0[i]
-        u0view[i,1] = u0[i,1]
+    function F(t,r,dr)
+        u    = u0(r)
+        dudr = dur(r,u)
+        M    = monitor(r,u,dudr)
+        res  = copy(dr)
+        for i = 2:npts-1
+            res[i]=dr[i]-1/ eps / dxi^2*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+        end
+        return res
     end
 
-    (t,y)=dasslSolve(F,y0,[0.,10]; args...)
+    (t,r)=dasslSolve(F,r0,[0.,10]; args...)
 
-    return y
+    return r[end]
 end
 
 function dur(r,u)
     ur=zero(u)
     npts=length(r)
-    npde=size(u,2)
-    for j = 1:npde
-        uj=view(u,:,j)
-        for i = 1:npts
-            if i == 1
-                ur[i,j]=(r[2+i]^2*(uj[i]-uj[1+i])+2r[i]*(r[2+i]*(-uj[i]+uj[1+i])+r[1+i]*(uj[i]-uj[2+i]))+r[1+i]^2*(-uj[i]+uj[2+i])+r[i]^2*(-uj[1+i]+uj[2+i]))/((r[i]-r[1+i])*(r[i]-r[2+i])*(r[1+i]-r[2+i]))
-            elseif i == npts
-                ur[i,j]=(r[i]^2*(-uj[-2+i]+uj[-1+i])+2r[-1+i]*r[i]*(uj[-2+i]-uj[i])+r[-2+i]^2*(uj[-1+i]-uj[i])+r[-1+i]^2*(-uj[-2+i]+uj[i])+2r[-2+i]*r[i]*(-uj[-1+i]+uj[i]))/((r[-2+i]-r[-1+i])*(r[-2+i]-r[i])*(r[-1+i]-r[i]))
-            else
-                ur[i,j]=(r[1+i]^2*(uj[-1+i]-uj[i])-2r[i]*(r[1+i]*(uj[-1+i]-uj[i])+r[-1+i]*(uj[i]-uj[1+i]))+r[i]^2*(uj[-1+i]-uj[1+i])+r[-1+i]^2*(uj[i]-uj[1+i]))/((r[-1+i]-r[i])*(r[-1+i]-r[1+i])*(r[i]-r[1+i]))
-            end
+    for i = 1:npts
+        if i == 1
+            ur[i]=(r[2+i]^2*(u[i]-u[1+i])+2r[i]*(r[2+i]*(-u[i]+u[1+i])+r[1+i]*(u[i]-u[2+i]))+r[1+i]^2*(-u[i]+u[2+i])+r[i]^2*(-u[1+i]+u[2+i]))/((r[i]-r[1+i])*(r[i]-r[2+i])*(r[1+i]-r[2+i]))
+        elseif i == npts
+            ur[i]=(r[i]^2*(-u[-2+i]+u[-1+i])+2r[-1+i]*r[i]*(u[-2+i]-u[i])+r[-2+i]^2*(u[-1+i]-u[i])+r[-1+i]^2*(-u[-2+i]+u[i])+2r[-2+i]*r[i]*(-u[-1+i]+u[i]))/((r[-2+i]-r[-1+i])*(r[-2+i]-r[i])*(r[-1+i]-r[i]))
+        else
+            ur[i]=(r[1+i]^2*(u[-1+i]-u[i])-2r[i]*(r[1+i]*(u[-1+i]-u[i])+r[-1+i]*(u[i]-u[1+i]))+r[i]^2*(u[-1+i]-u[1+i])+r[-1+i]^2*(u[i]-u[1+i]))/((r[-1+i]-r[i])*(r[-1+i]-r[1+i])*(r[i]-r[1+i]))
         end
     end
 
