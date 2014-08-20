@@ -15,8 +15,9 @@ function fun(r,u)
     Lu = L(d,r,view(u,:,1))
     for i=1:size(u,1)
         dudt[i,1] = u[i,2]
-        dudt[i,2] = Lu[i]-(d-1)/2*sin(2*u[i,1])./r.^2
+        dudt[i,2] = Lu[i]-(d-1)/2*sin(2*u[i,1])/r[i]^2
     end
+
     return dudt
 end
 
@@ -27,12 +28,13 @@ function monitorarclength(r,u,ur)
 end
 
 function gnull(u,ur)
-    1
+    1/ur[1]
 end
 
 function newF(rhs::Rhs;eps=1e-5,monitor=monitorarclength,g=gnull)
 
     function F(tau,y,dy)
+
 
         npde = rhs.npde
 
@@ -54,8 +56,12 @@ function newF(rhs::Rhs;eps=1e-5,monitor=monitorarclength,g=gnull)
         du  = reshape_view( view( dy,npts+2:ny), (npts, npde))
         ru  = reshape_view( view(res,npts+2:ny), (npts, npde))
 
-        dudr = dur(r,u)
-        dudt = du-dr.*dudr
+        dudr = zero(u)
+        dudt = zero(u)
+        for j = 1:npde
+            dudr[:,j] = dur(r,view(u,:,j))
+            dudt[:,j] = view(du,:,j)-dr.*dudr[:,j]
+        end
         rhsval = rhs.fun(r,u)
 
         M    = monitor(r,view(u,:,1),view(dudr,:,1))
@@ -90,25 +96,99 @@ function newF(rhs::Rhs;eps=1e-5,monitor=monitorarclength,g=gnull)
 
 end
 
-function meshinit(r0,u0;monitor=monitorarclength, eps=1e-5, args...)
+function meshinit(r0,uinit;monitor=monitorarclength, eps=1e-5, args...)
+
+    info("Mesh initialization: Start")
     npts = length(r0)
     dxi = 1/(npts-1)
 
     function F(t,r,dr)
-        u    = u0(r)
-        dudr = dur(r,u)
-        M    = monitor(r,u,dudr)
+        u    = uinit(r)
+        M    = monitor(r,u,dur(r,u))
         res  = copy(dr)
         for i = 2:npts-1
-            res[i]=dr[i]-1/ eps / dxi^2*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+            res[i]=-eps*(dr[i-1]+dr[i+1]-2*dr[i])-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
         end
         return res
     end
 
-    (t,r)=dasslSolve(F,r0,[0.,10]; args...)
+    err = Inf
+    # for (t,r,dr) in dasslIterator(F, r0, zero(eps); reltol = dxi*eps, abstol = 1e-2*dxi*eps, args...)
+    for (t,r,dr) in dasslIterator(F, r0, zero(eps); reltol = dxi, abstol = 1e-2*dxi, args...)
+        err = norm(dr)*dxi
+        if err < 1e-13
+            info("Mesh initialization: Done! Total error = $err")
+            return r
+        end
+    end
 
-    return r[end]
+    warn("Mesh initialization: Failed! Total error = $err")
+    return r0
 end
+
+function wavesolve(rhs::Rhs, uinit::Function; npts=50, rspan=[0,pi], T=Float64, args...)
+    npde = rhs.npde
+
+    # generate initial data
+    t0 = 0
+    dr = (rspan[2]-rspan[1])/(npts-1)
+    r0 = [rspan[1]:dr:rspan[2]]
+    r0 = meshinit(r0, uinit; args...)
+    u0 = zeros(npts,npde)
+    u0[:,1]=uinit(r0)
+    ur0=zero(u0)
+    for j=1:npde
+        ur0[:,j]=dur(r0,view(u0,:,j))
+    end
+
+    # generate y0
+    ny=npts*(npde+1)+1
+    y0=zeros(ny)
+    y0[1]=t0
+    y0[2:npts+1]=r0
+    u0view=reshape_view(view(y0,npts+2:ny),(npts,npde))
+    for j=1:npde, i=1:npts
+        u0view[i,j]=u0[i,j]
+    end
+
+    F=newF(rhs; args...)
+
+    # prepare the output arrays
+    tauout = Array(T,1)
+      tout = Array(T,1)
+      rout = Array(Array{T,1},1)
+      uout = Array(Array{T,2},1)
+     urout = Array(Array{T,2},1)
+    tauout[1] = 0
+      tout[1] = t0
+      rout[1] = r0
+      uout[1] = u0
+     urout[1] = ur0
+
+    for (tau,y,dy) in dasslIterator(F, y0, tauout[1]; args...)
+        t  = y[1]
+        r  = y[2:npts+1]
+        u  = reshape(y[npts+2:end],npts,npde)
+        ur = zero(u)
+        for j=1:npde
+            ur[:,j]=dur(r,view(u,:,j))
+        end
+
+        push!(tauout, tau)
+        push!(tout,   t  )
+        push!(rout,   r  )
+        push!(uout,   u  )
+        push!(urout,  ur )
+
+        if u[2,1] > 0.5
+            break
+        end
+    end
+
+    return tauout, tout, rout, uout, urout
+
+end
+
 
 function dur(r,u)
     ur=zero(u)
