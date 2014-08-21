@@ -28,10 +28,10 @@ function monitorarclength(r,u,ur)
 end
 
 function gnull(u,ur)
-    1/ur[1]
+    1/sqrt(ur[1]^2+1)
 end
 
-function newF(rhs::Rhs;eps=1e-5,monitor=monitorarclength,g=gnull)
+function newF(rhs::Rhs;epsilon=1e-5,monitor=monitorarclength,g=gnull,args...)
 
     function F(tau,y,dy)
 
@@ -72,7 +72,7 @@ function newF(rhs::Rhs;eps=1e-5,monitor=monitorarclength,g=gnull)
 
         for i = 2:npts-1
             # moving mesh equations
-            rr[i]   = 1/dxi^2*(dr[i-1]+dr[i+1]-2*dr[i])-gval / eps / dxi^2*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+            rr[i]   = 1/dxi^2*(dr[i-1]+dr[i+1]-2*dr[i])-gval / epsilon / dxi^2*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
             # physical equations
             for j = 1:npde
                 ru[i,j] = -dudt[i,j] + gval*rhsval[i,j]
@@ -96,27 +96,32 @@ function newF(rhs::Rhs;eps=1e-5,monitor=monitorarclength,g=gnull)
 
 end
 
-function meshinit(r0,uinit;monitor=monitorarclength, eps=1e-5, args...)
+function meshinit(r0,
+                  uinit;
+                  monitor = monitorarclength,
+                  epsilon = 1e-5,
+                  args...)
 
     info("Mesh initialization: Start")
+    T = eltype(r0)
     npts = length(r0)
-    dxi = 1/(npts-1)
+    dxi = T(1/(npts-1))
 
     function F(t,r,dr)
         u    = uinit(r)
         M    = monitor(r,u,dur(r,u))
         res  = copy(dr)
         for i = 2:npts-1
-            res[i]=-eps*(dr[i-1]+dr[i+1]-2*dr[i])-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+            res[i]=-epsilon*(dr[i-1]+dr[i+1]-2*dr[i])-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
         end
         return res
     end
 
     err = Inf
-    # for (t,r,dr) in dasslIterator(F, r0, zero(eps); reltol = dxi*eps, abstol = 1e-2*dxi*eps, args...)
-    for (t,r,dr) in dasslIterator(F, r0, zero(eps); reltol = dxi, abstol = 1e-2*dxi, args...)
+    # for (t,r,dr) in dasslIterator(F, r0, zero(epsilon); reltol = dxi*epsilon, abstol = 1e-2*dxi*epsilon, args...)
+    for (t,r,dr) in dasslIterator(F, r0, zero(T); reltol = dxi, abstol = 1e-2*dxi)
         err = norm(dr)*dxi
-        if err < 1e-13
+        if err < eps(T)^(2/3)
             info("Mesh initialization: Done! Total error = $err")
             return r
         end
@@ -126,12 +131,19 @@ function meshinit(r0,uinit;monitor=monitorarclength, eps=1e-5, args...)
     return r0
 end
 
-function wavesolve(rhs::Rhs, uinit::Function; npts=50, rspan=[0,pi], T=Float64, args...)
+function wavesolve(rhs   :: Rhs,
+                   uinit :: Function;
+                   npts  = 50,
+                   rspan = [0,pi],
+                   T     = Float64,
+                   args...)
     npde = rhs.npde
 
+    # TODO remove the generation of initial data to another function
+
     # generate initial data
-    t0 = 0
-    dr = (rspan[2]-rspan[1])/(npts-1)
+    t0 = zero(T)
+    dr = T((rspan[2]-rspan[1])/(npts-1))
     r0 = [rspan[1]:dr:rspan[2]]
     r0 = meshinit(r0, uinit; args...)
     u0 = zeros(npts,npde)
@@ -143,7 +155,7 @@ function wavesolve(rhs::Rhs, uinit::Function; npts=50, rspan=[0,pi], T=Float64, 
 
     # generate y0
     ny=npts*(npde+1)+1
-    y0=zeros(ny)
+    y0=zeros(T,ny)
     y0[1]=t0
     y0[2:npts+1]=r0
     u0view=reshape_view(view(y0,npts+2:ny),(npts,npde))
@@ -159,13 +171,14 @@ function wavesolve(rhs::Rhs, uinit::Function; npts=50, rspan=[0,pi], T=Float64, 
       rout = Array(Array{T,1},1)
       uout = Array(Array{T,2},1)
      urout = Array(Array{T,2},1)
-    tauout[1] = 0
+    tauout[1] = zero(T)
       tout[1] = t0
       rout[1] = r0
       uout[1] = u0
      urout[1] = ur0
 
     for (tau,y,dy) in dasslIterator(F, y0, tauout[1]; args...)
+        print("$tau\r")
         t  = y[1]
         r  = y[2:npts+1]
         u  = reshape(y[npts+2:end],npts,npde)
@@ -180,7 +193,7 @@ function wavesolve(rhs::Rhs, uinit::Function; npts=50, rspan=[0,pi], T=Float64, 
         push!(uout,   u  )
         push!(urout,  ur )
 
-        if u[2,1] > 0.5
+        if u[2,1] > 1/2
             break
         end
     end
@@ -189,6 +202,10 @@ function wavesolve(rhs::Rhs, uinit::Function; npts=50, rspan=[0,pi], T=Float64, 
 
 end
 
+
+# dur and L assume:
+# - r[1]=0
+# - the function u is symmetric around r=0, i.e. around r[1]
 
 function dur(r,u)
     ur=zero(u)
