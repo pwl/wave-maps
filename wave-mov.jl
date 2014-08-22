@@ -1,6 +1,7 @@
 using Winston
 using DASSL
 using ArrayViews
+using Devectorize
 
 include("discretization.jl")
 
@@ -11,7 +12,7 @@ end
 
 function fun(r,u)
     dudt = zero(u)
-    d = 3
+    d = 4
     Lu = L(d,r,view(u,:,1))
     for i=1:size(u,1)
         dudt[i,1] = u[i,2]
@@ -24,7 +25,7 @@ end
 const myRhs=Rhs(fun,2)
 
 function monitorarclength(r,u,ur)
-    M=sqrt(1.+abs(ur).^(2))
+    @devec M=sqrt(1.+abs(ur).^(2))
 end
 
 function gnull(u,ur)
@@ -72,7 +73,7 @@ function newF(rhs::Rhs;epsilon=1e-5,monitor=monitorarclength,g=gnull,gamma=2,arg
 
         for i = 2:npts-1
             # moving mesh equations
-            rr[i]   = (dr[i]-gamma/dxi^2*(dr[i-1]+dr[i+1]-2*dr[i]))-gval / epsilon / dxi^2*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+            rr[i]   = (dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-gval / epsilon*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
             # physical equations
             for j = 1:npde
                 ru[i,j] = -dudt[i,j] + gval*rhsval[i,j]
@@ -113,7 +114,7 @@ function meshinit(r0,
         M    = monitor(r,u,dur(r,u))
         res  = copy(dr)
         for i = 2:npts-1
-            res[i]=epsilon*(dr[i]-gamma*(dr[i-1]+dr[i+1]-2*dr[i])/dxi^2)-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )/dxi^2
+            res[i]=epsilon*(dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
         end
         return res
     end
@@ -137,6 +138,7 @@ function wavesolve(rhs   :: Rhs,
                    npts  = 50,
                    rspan = [0,pi],
                    T     = Float64,
+                   taumax = 30,
                    args...)
     npde = rhs.npde
 
@@ -167,11 +169,11 @@ function wavesolve(rhs   :: Rhs,
     F=newF(rhs; args...)
 
     # prepare the output arrays
-    tauout = Array(T,1)
-      tout = Array(T,1)
-      rout = Array(Array{T,1},1)
-      uout = Array(Array{T,2},1)
-     urout = Array(Array{T,2},1)
+    tauout    = Array(T,1)
+      tout    = Array(T,1)
+      rout    = Array(Array{T,1},1)
+      uout    = Array(Array{T,2},1)
+     urout    = Array(Array{T,2},1)
     tauout[1] = zero(T)
       tout[1] = t0
       rout[1] = r0
@@ -194,7 +196,7 @@ function wavesolve(rhs   :: Rhs,
         push!(uout,   u  )
         push!(urout,  ur )
 
-        if u[2,1] > 1/5 || tau > 30
+        if u[2,1] > 1/5 || tau > 1
             break
         end
     end
