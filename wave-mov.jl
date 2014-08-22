@@ -2,7 +2,7 @@ using Winston
 using DASSL
 using ArrayViews
 
-npde = 2
+include("discretization.jl")
 
 type Rhs
     fun  :: Function
@@ -24,14 +24,14 @@ end
 const myRhs=Rhs(fun,2)
 
 function monitorarclength(r,u,ur)
-    M=sqrt(1.+ur.^2)
+    M=sqrt(1.+abs(ur).^(2))
 end
 
 function gnull(u,ur)
     1/sqrt(ur[1]^2+1)
 end
 
-function newF(rhs::Rhs;epsilon=1e-5,monitor=monitorarclength,g=gnull,args...)
+function newF(rhs::Rhs;epsilon=1e-5,monitor=monitorarclength,g=gnull,gamma=2,args...)
 
     function F(tau,y,dy)
 
@@ -72,7 +72,7 @@ function newF(rhs::Rhs;epsilon=1e-5,monitor=monitorarclength,g=gnull,args...)
 
         for i = 2:npts-1
             # moving mesh equations
-            rr[i]   = 1/dxi^2*(dr[i-1]+dr[i+1]-2*dr[i])-gval / epsilon / dxi^2*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+            rr[i]   = (dr[i]-gamma/dxi^2*(dr[i-1]+dr[i+1]-2*dr[i]))-gval / epsilon / dxi^2*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
             # physical equations
             for j = 1:npde
                 ru[i,j] = -dudt[i,j] + gval*rhsval[i,j]
@@ -100,19 +100,20 @@ function meshinit(r0,
                   uinit;
                   monitor = monitorarclength,
                   epsilon = 1e-5,
+                  gamma = 2,
                   args...)
 
     info("Mesh initialization: Start")
-    T = eltype(r0)
+    T    = eltype(r0)
     npts = length(r0)
-    dxi = T(1/(npts-1))
+    dxi  = convert(T,1/(npts-1))
 
     function F(t,r,dr)
         u    = uinit(r)
         M    = monitor(r,u,dur(r,u))
         res  = copy(dr)
         for i = 2:npts-1
-            res[i]=-epsilon*(dr[i-1]+dr[i+1]-2*dr[i])-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+            res[i]=epsilon*(dr[i]-gamma*(dr[i-1]+dr[i+1]-2*dr[i])/dxi^2)-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )/dxi^2
         end
         return res
     end
@@ -143,7 +144,7 @@ function wavesolve(rhs   :: Rhs,
 
     # generate initial data
     t0 = zero(T)
-    dr = T((rspan[2]-rspan[1])/(npts-1))
+    dr = convert(T,(rspan[2]-rspan[1])/(npts-1))
     r0 = [rspan[1]:dr:rspan[2]]
     r0 = meshinit(r0, uinit; args...)
     u0 = zeros(npts,npde)
@@ -193,57 +194,11 @@ function wavesolve(rhs   :: Rhs,
         push!(uout,   u  )
         push!(urout,  ur )
 
-        if u[2,1] > 1/2
+        if u[2,1] > 1/5 || tau > 30
             break
         end
     end
 
     return tauout, tout, rout, uout, urout
 
-end
-
-
-# dur and L assume:
-# - r[1]=0
-# - the function u is symmetric around r=0, i.e. around r[1]
-
-function dur(r,u)
-    ur=zero(u)
-    npts=length(r)
-    for i = 1:npts
-        if i == 1
-            ur[i]=(r[2+i]^2*(u[i]-u[1+i])+2r[i]*(r[2+i]*(-u[i]+u[1+i])+r[1+i]*(u[i]-u[2+i]))+r[1+i]^2*(-u[i]+u[2+i])+r[i]^2*(-u[1+i]+u[2+i]))/((r[i]-r[1+i])*(r[i]-r[2+i])*(r[1+i]-r[2+i]))
-        elseif i == npts
-            ur[i]=(r[i]^2*(-u[-2+i]+u[-1+i])+2r[-1+i]*r[i]*(u[-2+i]-u[i])+r[-2+i]^2*(u[-1+i]-u[i])+r[-1+i]^2*(-u[-2+i]+u[i])+2r[-2+i]*r[i]*(-u[-1+i]+u[i]))/((r[-2+i]-r[-1+i])*(r[-2+i]-r[i])*(r[-1+i]-r[i]))
-        else
-            ur[i]=(r[1+i]^2*(u[-1+i]-u[i])-2r[i]*(r[1+i]*(u[-1+i]-u[i])+r[-1+i]*(u[i]-u[1+i]))+r[i]^2*(u[-1+i]-u[1+i])+r[-1+i]^2*(u[i]-u[1+i]))/((r[-1+i]-r[i])*(r[-1+i]-r[1+i])*(r[i]-r[1+i]))
-        end
-    end
-
-    return ur
-end
-
-function L(d,r,u;order=2)
-    npts = length(r)
-    Lu=zero(u)
-    if order == 1
-        for i = 1:npts
-
-        end
-    elseif order == 2
-        for i = 1:npts
-            if i == 1
-                Lu[i]=0
-            elseif i == 2
-                Lu[i]=-(r[i]^(-2-d)*(r[i]^d*(2r[i]-r[1+i])*r[1+i]*(-2r[i]*r[1+i]*u[i]+r[1+i]^2*u[i]+r[i]^2*u[1+i])+(r[i]^4*r[1+i]^d*(r[2+i]^2*(u[i]-u[1+i])-2r[1+i]*(r[2+i]*(u[i]-u[1+i])+r[i]*(u[1+i]-u[2+i]))+r[1+i]^2*(u[i]-u[2+i])+r[i]^2*(u[1+i]-u[2+i])))/((r[i]-r[2+i])*(r[1+i]-r[2+i]))))/((r[i]-r[1+i])^2*r[1+i]^2)
-            elseif i == npts-1
-                Lu[i]=-((r[i]^(1-d)*((r[i-1]^(-1+d)*(r[i-1]-r[1+i])*(-r[i]+r[1+i])^3*(r[i]^2*(u[i-2]-u[i-1])-2r[i-1]*(r[i]*(u[i-2]-u[i-1])+r[i-2]*(u[i-1]-u[i]))+r[i-1]^2*(u[i-2]-u[i])+r[i-2]^2*(u[i-1]-u[i])))/((r[i-2]-r[i-1])*(r[i-2]-r[i])*(r[i-1]-r[i]))+r[i]^(-1+d)*(-1+(r[i]-r[1+i])/(r[i-1]-r[i]))*(r[i-1]-r[1+i])*(r[1+i]^2*(u[i-1]-u[i])-2r[i]*(r[1+i]*(u[i-1]-u[i])+r[i-1]*(u[i]-u[1+i]))+r[i]^2*(u[i-1]-u[1+i])+r[i-1]^2*(u[i]-u[1+i]))+(r[i-1]-r[i])*r[1+i]^(-1+d)*(r[1+i]^2*(-u[i-1]+u[i])+2r[i]*r[1+i]*(u[i-1]-u[1+i])+r[i-1]^2*(u[i]-u[1+i])+r[i]^2*(-u[i-1]+u[1+i])+2r[i-1]*r[1+i]*(-u[i]+u[1+i]))))/((r[i-1]-r[i])*(r[i-1]-r[1+i])^2*(r[i]-r[1+i])^2))
-            elseif i == npts
-                Lu[i]=(r[i]^(1-d)*(-((r[i-2]^(d-1)*(r[i-1]-r[i])^3*(r[i-1]^2*(u[i-3]-u[i-2])-2r[i-2]*(r[i-1]*(u[i-3]-u[i-2])+r[i-3]*(u[i-2]-u[i-1]))+r[i-2]^2*(u[i-3]-u[i-1])+r[i-3]^2*(u[i-2]-u[i-1])))/((r[i-3]-r[i-2])*(r[i-3]-r[i-1])))+r[i-1]^(-1+d)*(r[i-2]-r[i])*(r[i]^2*(u[i-2]-u[i-1])-2r[i-1]*(r[i]*(u[i-2]-u[i-1])+r[i-2]*(u[i-1]-u[i]))+r[i-1]^2*(u[i-2]-u[i])+r[i-2]^2*(u[i-1]-u[i]))-1/(r[i-2]-r[i])*(r[i-2]-r[i-1])*(r[i-2]+r[i-1]-2r[i])*r[i]^(d-1)*(r[i]^2*(-u[i-2]+u[i-1])+2r[i-1]*r[i]*(u[i-2]-u[i])+r[i-2]^2*(u[i-1]-u[i])+r[i-1]^2*(-u[i-2]+u[i])+2r[i-2]r[i]*(-u[i-1]+u[i]))))/((r[i-2]-r[i-1])^2*(r[i-2]-r[i])*(r[i-1]-r[i])^2)
-            else
-                Lu[i]=-(1/((r[i]-r[1+i])^2))*r[i]^(1-d)*(-((r[i-1]^(-1+d)*(r[i]-r[1+i])^3*(r[i]^2*(u[i-2]-u[i-1])-2r[i-1]*(r[i]*(u[i-2]-u[i-1])+r[i-2]*(u[i-1]-u[i]))+r[i-1]^2*(u[i-2]-u[i])+r[i-2]^2*(u[i-1]-u[i])))/((r[i-2]-r[i-1])*(r[i-2]-r[i])*(r[i-1]-r[i])^2*(r[i-1]-r[1+i])))-(r[i]^(-1+d)*(r[i-1]-2r[i]+r[1+i])*(r[1+i]^2*(u[i-1]-u[i])-2r[i]*(r[1+i]*(u[i-1]-u[i])+r[i-1]*(u[i]-u[1+i]))+r[i]^2*(u[i-1]-u[1+i])+r[i-1]^2*(u[i]-u[1+i])))/((r[i-1]-r[i])^2*(r[i-1]-r[1+i]))+((-r[i-1]+r[i])r[1+i]^(-1+d)*(r[2+i]^2*(u[i]-u[1+i])-2r[1+i]*(r[2+i]*(u[i]-u[1+i])+r[i]*(u[1+i]-u[2+i]))+r[1+i]^2*(u[i]-u[2+i])+r[i]^2*(u[1+i]-u[2+i])))/((-r[i-1]+r[1+i])*(r[i]-r[2+i])*(r[1+i]-r[2+i])))
-            end
-        end
-    end
-    return Lu
 end
