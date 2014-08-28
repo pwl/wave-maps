@@ -1,7 +1,6 @@
 using Winston
 using DASSL
 using ArrayViews
-using Devectorize
 
 include("discretization.jl")
 
@@ -11,84 +10,82 @@ type Rhs
 end
 
 function fun(r,u)
+    npts = length(r)
     dudt = zero(u)
-    d = 4
-    Lu = L(d,r,view(u,:,1))
-    for i=1:size(u,1)
+    d = 10
+    Lu = L(d,r,u[:,1])
+    dudt[1,:]=0
+    for i=2:npts-1
         dudt[i,1] = u[i,2]
-        dudt[i,2] = Lu[i]-(d-1)/2*sin(2*u[i,1])/r[i]^2
+        # dudt[i,2] = Lu[i]-(d-1)/2*sin(2*u[i,1])/r[i]^2
+        dudt[i,2] = Lu[i]-(d-1)*u[i,1]/r[i]^2
     end
-
     return dudt
 end
 
 const myRhs=Rhs(fun,2)
 
 function monitorarclength(r,u,ur)
-    @devec M=sqrt(1.+abs(ur).^(2))
+    # @todo add mesh smoothing or some normalization?
+    M=sqrt(1.+abs(ur).^(2.1))
 end
 
 function gnull(u,ur)
     1/sqrt(ur[1]^2+1)
 end
 
-function newF(rhs::Rhs;epsilon=1e-5,monitor=monitorarclength,g=gnull,gamma=2,args...)
+function newF(rhs::Rhs;
+              epsilon=1e-5,
+              monitor=monitorarclength,
+              g=gnull,
+              gamma=2,
+              args...)
 
     function F(tau,y,dy)
-
-
         npde = rhs.npde
 
         ny   = length(y)
         npts = int((ny-1)/(npde+1))
         dxi  = 1/(npts-1)
 
-        res  = zero(y)
-
-        # warning, t and dt are _copies_ of y[1] and dy[1]
          t  =   y[1]
         dt  =  dy[1]
 
-         r  = view(  y,2:npts+1)
-        dr  = view( dy,2:npts+1)
-        rr  = view(res,2:npts+1)
+         r  =   y[2:npts+1]
+        dr  =  dy[2:npts+1]
+        rr  = zero(r)
 
-         u  = reshape_view( view(  y,npts+2:ny), (npts, npde))
-        du  = reshape_view( view( dy,npts+2:ny), (npts, npde))
-        ru  = reshape_view( view(res,npts+2:ny), (npts, npde))
+         u  = reshape(  y[npts+2:ny], npts, npde)
+        du  = reshape( dy[npts+2:ny], npts, npde)
+        ru  = zero(u)
 
-        dudr = zero(u)
-        dudt = zero(u)
+        dudr = zero(u)          # du/dr
         for j = 1:npde
-            dudr[:,j] = dur(r,view(u,:,j))
-            dudt[:,j] = view(du,:,j)-dr.*dudr[:,j]
+            dudr[:,j] = dur(r,u[:,j])
         end
+        dudt = du-dr.*dudr      # du/dt=u_t-dr/dt*u_r
+
         rhsval = rhs.fun(r,u)
 
-        M    = monitor(r,view(u,:,1),view(dudr,:,1))
-        gval = g(view(u,:,1),view(dudr,:,1))
+        M    = monitor(r,u[:,1],dudr[:,1])
+        gval = g(u[:,1],dudr[:,1])
 
-        # sundman transform equations
+        res  = zero(y)
+
+        # Sundman transform equations
         res[1] = dt-gval
 
+        # moving mesh equation
         for i = 2:npts-1
-            # moving mesh equations
             rr[i]   = (dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-gval / epsilon*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
-            # physical equations
-            for j = 1:npde
-                ru[i,j] = -dudt[i,j] + gval*rhsval[i,j]
-            end
         end
+        rr[ 1 ] = dr[ 1 ]   # mesh boundary conditions
+        rr[end] = dr[end]
+        res[2:npts+1]=rr
 
-        # mesh boundary conditions
-        rr[    1] = dr[    1]
-        rr[  end] = dr[  end]
-
-        # function boundary conditions
-        for j = 1:npde
-            ru[1,  j] = du[1,  j]
-            ru[end,j] = du[end,j]
-        end
+        # physical equations
+        ru = -dudt+gval.*rhsval
+        res[npts+2:end]=reshape(ru,npts*npde)
 
         return res
     end
@@ -119,11 +116,11 @@ function meshinit(r0,
         return res
     end
 
+    tol = min(1,epsilon*1e7)
     err = Inf
-    # for (t,r,dr) in dasslIterator(F, r0, zero(epsilon); reltol = dxi*epsilon, abstol = 1e-2*dxi*epsilon, args...)
-    for (t,r,dr) in dasslIterator(F, r0, zero(T); reltol = dxi, abstol = 1e-2*dxi)
+    for (t,r,dr) in dasslIterator(F, r0, zero(T); reltol = dxi*tol, abstol = 1e-2*dxi*tol)
         err = norm(dr)*dxi
-        if err < eps(T)^(2/3)
+        if err < eps(T)^(4/5)
             info("Mesh initialization: Done! Total error = $err")
             return r
         end
@@ -153,7 +150,7 @@ function wavesolve(rhs   :: Rhs,
     u0[:,1]=uinit(r0)
     ur0=zero(u0)
     for j=1:npde
-        ur0[:,j]=dur(r0,view(u0,:,j))
+        ur0[:,j]=dur(r0,u0[:,j])
     end
 
     # generate y0
@@ -187,7 +184,7 @@ function wavesolve(rhs   :: Rhs,
         u  = reshape(y[npts+2:end],npts,npde)
         ur = zero(u)
         for j=1:npde
-            ur[:,j]=dur(r,view(u,:,j))
+            ur[:,j]=dur(r,u[:,j])
         end
 
         push!(tauout, tau)
@@ -196,7 +193,7 @@ function wavesolve(rhs   :: Rhs,
         push!(uout,   u  )
         push!(urout,  ur )
 
-        if u[2,1] > 1/5 || tau > 1
+        if u[2,1] > 1/5 || tau > taumax
             break
         end
     end
