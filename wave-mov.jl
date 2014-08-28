@@ -1,4 +1,3 @@
-using Winston
 using DASSL
 using ArrayViews
 
