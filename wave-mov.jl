@@ -3,15 +3,15 @@ using ArrayViews
 
 include("discretization.jl")
 
-type Rhs
-    fun  :: Function
+type Equation
+    rhs  :: Function
     npde :: Int
 end
 
-function fun(r,u)
+function rhsWM(r,u)
     npts = length(r)
     dudt = zero(u)
-    d = 10
+    d = 10                      # dimension
     Lu = L(d,r,u[:,1])
     dudt[1,:]=0
     for i=2:npts-1
@@ -22,7 +22,7 @@ function fun(r,u)
     return dudt
 end
 
-const myRhs=Rhs(fun,2)
+const WM=Equation(rhsWM,2)
 
 function monitorarclength(r,u,ur)
     # @todo add mesh smoothing or some normalization?
@@ -33,7 +33,45 @@ function gnull(u,ur)
     1/sqrt(ur[1]^2+1)
 end
 
-function newF(rhs::Rhs;
+function extracty(y,dy,npts,npde)
+    t   =  y[1]
+    dt  = dy[1]
+    r   =  y[2:npts+1]
+    dr  = dy[2:npts+1]
+    u   = reshape(  y[npts+2:end], npts, npde)
+    du  = reshape( dy[npts+2:end], npts, npde)
+    return t, dt, r, dr, u, du
+end
+
+function computederivatives(r,dr,u,du)
+    dudr = zero(u)          # du/dr
+    for j = 1:size(u,2)
+        dudr[:,j] = dur(r,u[:,j])
+    end
+    dudt = du-dr.*dudr      # du/dt=u_t-dr/dt*u_r
+    return dudr, dudt
+end
+
+function movingmeshres(r,dr,M,gamma,gval,epsilon)
+    npts = length(dr)
+    dxi  = 1/(npts-1)
+    resr = zero(dr)          # residua of moving mesh
+    for i = 2:npts-1
+        resr[i]   = (dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-gval / epsilon*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
+    end
+    resr[ 1 ] = dr[ 1 ]   # mesh boundary conditions
+    resr[end] = dr[end]
+    return resr
+end
+
+function physicalres(rhs,r,u,dudt,gval)
+    rhsval = rhs(r,u)
+    npts, npde = size(dudt)
+    resu = -dudt+gval.*rhsval
+    return reshape(resu,npts*npde)
+end
+
+function newF(eqn::Equation;
               epsilon=1e-5,
               monitor=monitorarclength,
               g=gnull,
@@ -41,50 +79,20 @@ function newF(rhs::Rhs;
               args...)
 
     function F(tau,y,dy)
-        npde = rhs.npde
+        npde = eqn.npde
 
-        ny   = length(y)
-        npts = int((ny-1)/(npde+1))
-        dxi  = 1/(npts-1)
+        npts = int((length(y)-1)/(npde+1))
 
-         t  =   y[1]
-        dt  =  dy[1]
-
-         r  =   y[2:npts+1]
-        dr  =  dy[2:npts+1]
-        rr  = zero(r)
-
-         u  = reshape(  y[npts+2:ny], npts, npde)
-        du  = reshape( dy[npts+2:ny], npts, npde)
-        ru  = zero(u)
-
-        dudr = zero(u)          # du/dr
-        for j = 1:npde
-            dudr[:,j] = dur(r,u[:,j])
-        end
-        dudt = du-dr.*dudr      # du/dt=u_t-dr/dt*u_r
-
-        rhsval = rhs.fun(r,u)
+        t, dt, r, dr, u, du = extracty(y,dy,npts,npde)
+        dudr, dudt = computederivatives(r,dr,u,du)
 
         M    = monitor(r,u[:,1],dudr[:,1])
         gval = g(u[:,1],dudr[:,1])
 
         res  = zero(y)
-
-        # Sundman transform equations
-        res[1] = dt-gval
-
-        # moving mesh equation
-        for i = 2:npts-1
-            rr[i]   = (dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-gval / epsilon*( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
-        end
-        rr[ 1 ] = dr[ 1 ]   # mesh boundary conditions
-        rr[end] = dr[end]
-        res[2:npts+1]=rr
-
-        # physical equations
-        ru = -dudt+gval.*rhsval
-        res[npts+2:end]=reshape(ru,npts*npde)
+        res[1]          = dt-gval                                  # Sundman transform equations
+        res[2:npts+1]   = movingmeshres(r,dr,M,gamma,gval,epsilon) # moving mesh equations
+        res[npts+2:end] = physicalres(eqn.rhs,r,u,dudt,gval)       # physical equations
 
         return res
     end
@@ -129,14 +137,14 @@ function meshinit(r0,
     return r0
 end
 
-function wavesolve(rhs   :: Rhs,
+function wavesolve(eqn   :: Equation,
                    uinit :: Function;
                    npts  = 50,
                    rspan = [0,pi],
                    T     = Float64,
                    taumax = 30,
                    args...)
-    npde = rhs.npde
+    npde = eqn.npde
 
     # TODO remove the generation of initial data to another function
 
@@ -162,7 +170,7 @@ function wavesolve(rhs   :: Rhs,
         u0view[i,j]=u0[i,j]
     end
 
-    F=newF(rhs; args...)
+    F=newF(eqn; args...)
 
     # prepare the output arrays
     tauout    = Array(T,1)
