@@ -8,29 +8,15 @@ type Equation
     npde :: Int
 end
 
-function rhsWM(r,u)
-    npts = length(r)
-    dudt = zero(u)
-    d = 10                      # dimension
-    Lu = L(d,r,u[:,1])
-    dudt[1,:]=0
-    for i=2:npts-1
-        dudt[i,1] = u[i,2]
-        # dudt[i,2] = Lu[i]-(d-1)/2*sin(2*u[i,1])/r[i]^2
-        dudt[i,2] = Lu[i]-(d-1)*u[i,1]/r[i]^2
-    end
-    return dudt
-end
-
-const WM=Equation(rhsWM,2)
-
-function monitorarclength(r,u,ur)
+# default monitor function
+function defaultmonitor(r,u,ur)
     # @todo add mesh smoothing or some normalization?
-    M=sqrt(1.+abs(ur).^(2.1))
+    M=sqrt(1.+abs(ur).^2)
 end
 
-function gnull(u,ur)
-    1/sqrt(ur[1]^2+1)
+# default sundman transform function, suitable for self-similar blow-up in first derivative
+function defaultsundman(u,ur)
+    1/sqrt(1+ur[1]^2)
 end
 
 function extracty(y,dy,npts,npde)
@@ -73,8 +59,8 @@ end
 
 function newF(eqn::Equation;
               epsilon=1e-5,
-              monitor=monitorarclength,
-              g=gnull,
+              monitor=defaultmonitor,
+              g=defaultsundman,
               gamma=2,
               args...)
 
@@ -143,6 +129,7 @@ function wavesolve(eqn   :: Equation,
                    rspan = [0,pi],
                    T     = Float64,
                    taumax = 30,
+                   stopcondition = u->(u[2,1] > 1/5),
                    args...)
     npde = eqn.npde
 
@@ -200,7 +187,7 @@ function wavesolve(eqn   :: Equation,
         push!(uout,   u  )
         push!(urout,  ur )
 
-        if u[2,1] > 1/5 || tau > taumax
+        if stopcondition(u) || tau > taumax
             break
         end
     end
@@ -208,3 +195,5 @@ function wavesolve(eqn   :: Equation,
     return tauout, tout, rout, uout, urout
 
 end
+
+include("equations.jl")
