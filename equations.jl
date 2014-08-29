@@ -1,4 +1,4 @@
-d = 10                          # dimension
+d = 4                          # dimension
 
 function rhsWM(r,u)
     npts = length(r)

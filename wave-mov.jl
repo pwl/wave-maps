@@ -8,10 +8,10 @@ type Equation
     npde :: Int
 end
 
-# default monitor function
-function defaultmonitor(r,u,ur)
-    # @todo add mesh smoothing or some normalization?
-    M=sqrt(1.+abs(ur).^2)
+function arclength(;power=2,A=1,B=1)
+    function monitor(r,u,ur)
+        M=sqrt(A.+B*abs(ur).^power)
+    end
 end
 
 # default sundman transform function, suitable for self-similar blow-up in first derivative
@@ -38,6 +38,19 @@ function computederivatives(r,dr,u,du)
     return dudr, dudt
 end
 
+# simple gaussian filter to smoothen the monitor function
+function smoothen(M; passes = 1)
+    if passes == 0
+        return M
+    else
+        Msmooth = zero(M)
+        Msmooth[2:end-1]=(M[1:end-2]+2M[2:end-1]+M[3:end])/4
+        Msmooth[1]=(M[1]+M[2])/2
+        Msmooth[end]=(M[end-1]+M[end])/2
+        return smoothen(Msmooth, passes=passes-1)
+    end
+end
+
 function movingmeshres(r,dr,M,gamma,gval,epsilon)
     npts = length(dr)
     dxi  = 1/(npts-1)
@@ -59,9 +72,10 @@ end
 
 function newF(eqn::Equation;
               epsilon=1e-5,
-              monitor=defaultmonitor,
+              monitor=arclength(),
               g=defaultsundman,
               gamma=2,
+              passes=1,
               args...)
 
     function F(tau,y,dy)
@@ -72,7 +86,7 @@ function newF(eqn::Equation;
         t, dt, r, dr, u, du = extracty(y,dy,npts,npde)
         dudr, dudt = computederivatives(r,dr,u,du)
 
-        M    = monitor(r,u[:,1],dudr[:,1])
+        M    = smoothen(monitor(r,u[:,1],dudr[:,1]); passes = passes)
         gval = g(u[:,1],dudr[:,1])
 
         res  = zero(y)
@@ -89,9 +103,10 @@ end
 
 function meshinit(r0,
                   uinit;
-                  monitor = monitorarclength,
+                  monitor = arclength(),
                   epsilon = 1e-5,
                   gamma = 2,
+                  passes = 1,
                   args...)
 
     info("Mesh initialization: Start")
@@ -101,7 +116,7 @@ function meshinit(r0,
 
     function F(t,r,dr)
         u    = uinit(r)
-        M    = monitor(r,u,dur(r,u))
+        M    = smoothen(monitor(r,u,dur(r,u)); passes = passes)
         res  = copy(dr)
         for i = 2:npts-1
             res[i]=epsilon*(dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
@@ -125,10 +140,10 @@ end
 
 function wavesolve(eqn   :: Equation,
                    uinit :: Function;
-                   npts  = 50,
+                   npts  = 100,
                    rspan = [0,pi],
                    T     = Float64,
-                   taumax = 30,
+                   taumax = 20,
                    stopcondition = u->(u[2,1] > 1/5),
                    args...)
     npde = eqn.npde
