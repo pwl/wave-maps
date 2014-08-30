@@ -9,19 +9,28 @@ function plotmesh(tau,r;args...)
     for i = 2:di:npts
         oplot(map(q->q[i],r),tau)
     end
-    display(p)
-    return(p)
+    return p
 end
 
-function plotmode(r,u,ru,s,s0;d=3,args...)
+function plotmode(r,u,ur,s,s0;d=3,args...)
     i0   = indmin(abs(s.-s0))
     y    = r[i0].*exp(s[i0])
     fsol = 2*atan(y/sqrt(d-2))
     Du   = u[i0][:,1]-fsol
     Dur0 = ur[i0][1,1]*exp(-s[i0])-2/sqrt(d-2)
     println(Dur0)
+    mode = getmode(d,1)
     plot(y,Du;args...)
-    oplot(mode[:,1],mode[:,2]*Dur0)
+    oplot(mode[:,1],mode[:,2]*Dur0,xrange=[0:1])
+end
+
+function plotu(r,u,ur,s,s0;d=3,args...)
+    i0   = indmin(abs(s.-s0))
+    y    = r[i0].*exp(s[i0])
+    fsol = 2*atan(y/sqrt(d-2))
+    Du   = u[i0][:,1]
+    plot(y[2:end],Du[2:end];args...)
+    oplot(y[2:end],fsol[2:end],"r:")
 end
 
 function getmode(d,n)

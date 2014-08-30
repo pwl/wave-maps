@@ -2,7 +2,7 @@
 # - r[1]=0
 # - the function u is symmetric around r=0, i.e. around r[1]
 
-function dur(r,u)
+function dur(r,u; order=2)
     ur=zero(u)
     npts=length(r)
     for i = 1:npts
