@@ -1,13 +1,13 @@
 using Winston
 
-function plotmesh(tau,r;args...)
+function plotmesh(s,r;args...)
     maxpts = 100
     npts   = length(r[1])
     di     = max(1,int(npts/maxpts))
 
     p = plot(xlog=true,xrange=[r[end][2],r[end][end]];args...)
     for i = 2:di:npts
-        oplot(map(q->q[i],r),tau)
+        oplot(map(q->q[i],r),s)
     end
     return p
 end

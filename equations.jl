@@ -1,9 +1,9 @@
-d = 4                          # dimension
+const d = 4                          # dimension
 
 function rhsWM(r,u)
     npts = length(r)
     dudt = zero(u)
-    Lu = L(d,r,u[:,1])
+    Lu = L(d,r,u[:,1],order=1)
     dudt[1,:]=0
     for i=2:npts-1
         dudt[i,1] = u[i,2]

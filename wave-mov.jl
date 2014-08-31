@@ -75,7 +75,6 @@ function newF(eqn::Equation;
               monitor=arclength(),
               g=defaultsundman,
               gamma=2,
-              passes=1,
               args...)
 
     function F(tau,y,dy)
@@ -86,7 +85,7 @@ function newF(eqn::Equation;
         t, dt, r, dr, u, du = extracty(y,dy,npts,npde)
         dudr, dudt = computederivatives(r,dr,u,du)
 
-        M    = smoothen(monitor(r,u[:,1],dudr[:,1]); passes = passes)
+        M    = smoothen(monitor(r,u[:,1],dudr[:,1]); args...)
         gval = g(u[:,1],dudr[:,1])
 
         res  = zero(y)
@@ -106,7 +105,6 @@ function meshinit(r0,
                   monitor = arclength(),
                   epsilon = 1e-5,
                   gamma = 2,
-                  passes = 1,
                   args...)
 
     info("Mesh initialization: Start")
@@ -116,7 +114,7 @@ function meshinit(r0,
 
     function F(t,r,dr)
         u    = uinit(r)
-        M    = smoothen(monitor(r,u,dur(r,u)); passes = passes)
+        M    = smoothen(monitor(r,u,dur(r,u)); args...)
         res  = copy(dr)
         for i = 2:npts-1
             res[i]=epsilon*(dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
