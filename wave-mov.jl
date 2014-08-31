@@ -39,7 +39,7 @@ function computederivatives(r,dr,u,du)
 end
 
 # simple gaussian filter to smoothen the monitor function
-function smoothen(M; passes = 1)
+function smoothen(M; passes = 1, args...)
     if passes == 0
         return M
     else
