@@ -11,7 +11,7 @@ macro testparameter(name,range,fcall)
         newcall = fcall
         push!(newcall.args,Expr(:kw,name,val))
         @eval (tau,t,r,u,ur)=$newcall
-        p = summarize(tau,t,r,u,ur)
+        p = summarize(tau,t,r,u,ur,d)
         savefig(p,"$(string(name))-$(val).png", "width", 1024, "height", 1024)
     end
 end
