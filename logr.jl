@@ -1,5 +1,5 @@
 const d=4
-const (x0,x1)=(-10.,1.)
+const (x0,x1)=(-15.,1.)
 
 function initial(npts,u0::Function)
     x=linspace(x0,x1,npts)
@@ -21,6 +21,10 @@ function rhs(t,y,dy)
     resv = reshape(res,npts,2)
     resv[:,1]=v[:,2]-dv[:,1]
     resv[:,2]=vxxi+(d-2)*vxi-(d-1)/2*sin(2*v[:,1])-dv[:,2].*exp(2*x)
+    # The tricky part: boundary condition coming from expansion around
+    # r=0 and replacing the derivatives ur and urrr with their
+    # discretizations on a mesh r=[0,exp(x0),exp(x0+dx)] with
+    # u=[0,v[1],v[2]]
     resv[1,2]=2*(d-1)*v[1,1]^3-3*(2+d)*exp(-dx)*(coth(dx)-1)*(exp(dx)*v[1,1]-v[2,1])-3*exp(2*x0)*dv[1,2]
     return res
 end
@@ -58,4 +62,52 @@ function extract(t,y,dy)
      v = map(yi->reshape(yi,npts,2)[:,1],y)
     du = map(vi->exp(-x).*vx(vi),v)
     return r,v,du             # v=u
+end
+
+function wavelogsolve(uinit :: Function;
+                      npts = 100,
+                      stopcondition = u->(u[2,1] > 1/5),
+                      args...)
+
+    T=Float64
+    r = exp(linspace(x0,x1,npts))
+    # prepare initial data
+    y0 = initial(npts,uinit)
+    u0 = reshape(y0,npts,2)
+    ur0 = zero(u0)
+    for i = 1:2
+        ur0[:,i]=dur(r,u0[:,i])
+    end
+
+    # prepare the output arrays
+      tout    = Array(T,1)
+      rout    = Array(Array{T,1},1)
+      uout    = Array(Array{T,2},1)
+     urout    = Array(Array{T,2},1)
+      tout[1] = zero(T)
+      rout[1] = r
+      uout[1] = u0
+     urout[1] = ur0
+
+
+    for (t,y,dy) in dasslIterator(rhs, y0, tout[1]; args...)
+        print("$t\r")
+        u  = reshape(y,npts,2)
+        ur = zero(u)
+        for j=1:2
+            ur[:,j]=dur(r,u[:,j])
+        end
+
+        push!(tout,   t  )
+        push!(rout,   r  )
+        push!(uout,   u  )
+        push!(urout,  ur )
+
+        if stopcondition(u)
+            break
+        end
+    end
+
+    return tout, rout, uout, urout
+
 end
