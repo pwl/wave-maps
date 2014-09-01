@@ -12,6 +12,27 @@ function plotmesh(s,r;args...)
     return p
 end
 
+function plotmeshu(tau,t,r,u,ur,d;args...)
+    T,s  = Ts(tau,t,r,u,ur,d)
+    maxpts = 100
+    npts   = length(r[1])
+    di     = max(1,int(npts/maxpts))
+
+    p = plot(xrange=[0,5];title="Values of u at mesh points",xlabel="r",ylabel="-log(T-t)",args...)
+    for i = 2:di:npts
+        oplot(map(q->q[i,1],u),s)
+    end
+    return p
+end
+
+function plotxiu(tau,t,r,u,ur,s0,d;args...)
+    T,s  = Ts(tau,t,r,u,ur,d)
+    i0   = indmin(abs(s.-s0))
+    xi   = linspace(0,1,length(r[1]))
+
+    plot(xi,u[i0][:,1],".")
+end
+
 function plotmode(r,u,ur,s,s0,d;xrange=[0:2],args...)
     i0   = indmin(abs(s.-s0))
     y    = r[i0].*exp(s[i0])
@@ -58,7 +79,7 @@ function summarize(tau,t,r,u,ur,s0,d)
     tab[1,2]=plotmode(r,u,ur,s,s0,d,xrange=[0,1.1])
 
     # plot the convergence rate to the self-similar solution
-    tab[2,1]=plotconvergencerate(tau,t,r,u,ur,d,yrange=[1e-5,.1])
+    tab[2,1]=plotconvergencerate(tau,t,r,u,ur,d)
 
     # plot the self-similar profile
     tab[2,2]=plotu(tau,t,r,u,ur,s0,d,xlog=true,xrange=[1e-2,100],yrange=[0,pi])
