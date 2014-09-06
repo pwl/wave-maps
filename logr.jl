@@ -111,11 +111,11 @@ function wavelogsolve(uinit :: Function;
                       x0min = -10,
                       stopcondition = u->(u[2,1] > 1e-1),
                       d = 4,
+                      T = Float64,
                       args...)
 
-    const x1 = 1
+    const x1 = one(T)
     const dx = (x1-x0)/npts
-    T=Float64
     r = exp(linspace(x0,x1,npts))
     # prepare initial data
     y0 = initial(uinit,r)
@@ -135,7 +135,9 @@ function wavelogsolve(uinit :: Function;
       uout[1] = u0
      urout[1] = ur0
 
-    while(r[1] > 1e-10)
+    dy0 = zero(y0)
+
+    while(true)
 
         if x0 < x0min
             break
@@ -143,7 +145,7 @@ function wavelogsolve(uinit :: Function;
 
         F  = newF(x0,x1,d)
 
-        for (t,y,dy) in dasslIterator(F, y0, tout[end]; args...)
+        for (t,y,dy) in dasslIterator(F, y0, tout[end]; dy0 = dy0, args...)
             print("$t\r")
             u  = reshape(y,npts,2)
             ur = zero(u)
@@ -166,9 +168,12 @@ function wavelogsolve(uinit :: Function;
         r  = [exp(x0), rout[end]]
         # r = exp(linspace(x0,x1,npts))
         u  = uout[end]
+        du = uout[end]
         # interpolate
-        u = [[interpolate(u[:,1],dx),u[:,1]] [interpolate(u[:,2],dx),u[:,2]]]
-        y0 = reshape(u,2*npts)
+        u  = [[interpolate( u[:,1],dx), u[:,1]] [interpolate( u[:,2],dx), u[:,2]]]
+        du = [[interpolate(du[:,1],dx),du[:,1]] [interpolate(du[:,2],dx),du[:,2]]]
+        y0  = reshape( u,2*npts)
+        dy0 = reshape(du,2*npts)
         println("npts=$npts, t=$(tout[end]), log(r[1])=$(log(r[1]))")
     end
 
