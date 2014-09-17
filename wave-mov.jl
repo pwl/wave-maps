@@ -3,21 +3,7 @@ using ArrayViews
 
 include("discretization.jl")
 
-type Equation
-    rhs  :: Function
-    npde :: Int
-end
-
-function arclength(;power=2,A=1,B=1)
-    function monitor(r,u,ur)
-        M=sqrt(A.+B*abs(ur).^power)
-    end
-end
-
-# default sundman transform function, suitable for self-similar blow-up in first derivative
-function defaultsundman(u,ur)
-    1/sqrt(1+ur[1]^2)
-end
+abstract Equation
 
 function extracty(y,dy,npts,npde)
     t   =  y[1]
@@ -39,7 +25,7 @@ function computederivatives(r,dr,u,du)
 end
 
 # simple gaussian filter to smoothen the monitor function
-function smoothen(M; passes = 1, args...)
+function smoothen(M; passes = 4, args...)
     if passes == 0
         return M
     else
@@ -73,8 +59,6 @@ end
 
 function newF(eqn::Equation;
               epsilon=1e-5,
-              monitor=arclength(),
-              g=defaultsundman,
               gamma=2,
               args...)
 
@@ -86,8 +70,8 @@ function newF(eqn::Equation;
         t, dt, r, dr, u, du = extracty(y,dy,npts,npde)
         dudr, dudt = computederivatives(r,dr,u,du)
 
-        M    = smoothen(monitor(r,u[:,1],dudr[:,1]); args...)
-        gval = g(u[:,1],dudr[:,1])
+        M    = smoothen(eqn.monitor(r,u[:,1],dudr[:,1]); args...)
+        gval = eqn.sundman(r,u[:,1],dudr[:,1])
 
         res  = zero(y)
         res[1]          = dt-gval                                  # Sundman transform equations
@@ -101,9 +85,9 @@ function newF(eqn::Equation;
 
 end
 
-function meshinit(r0,
+function meshinit(eqn,
+                  r0,
                   uinit;
-                  monitor = arclength(),
                   epsilon = 1e-5,
                   gamma = 2,
                   args...)
@@ -115,7 +99,7 @@ function meshinit(r0,
 
     function F(t,r,dr)
         u    = uinit(r)
-        M    = smoothen(monitor(r,u,dur(r,u)); args...)
+        M    = smoothen(eqn.monitor(r,u,dur(r,u)); args...)
         res  = copy(dr)
         for i = 2:npts-1
             res[i]=epsilon*(dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
@@ -143,7 +127,7 @@ function wavesolve(eqn   :: Equation,
                    rspan = [0,pi],
                    T     = Float64,
                    taumax = 20,
-                   stopcondition = u->(u[2,1] > 1/5),
+                   stopcondition = u->(abs(u[2,1]) > 1/5),
                    args...)
     npde = eqn.npde
 
@@ -153,12 +137,14 @@ function wavesolve(eqn   :: Equation,
     t0 = zero(T)
     dr = convert(T,(rspan[2]-rspan[1])/(npts-1))
     r0 = [rspan[1]:dr:rspan[2]]
-    r0 = meshinit(r0, uinit; args...)
+    r0 = meshinit(eqn, r0, uinit; args...)
     u0 = zeros(npts,npde)
     u0[:,1]=uinit(r0)
     ur0=zero(u0)
+    urr0=zero(u0)
     for j=1:npde
-        ur0[:,j]=dur(r0,u0[:,j])
+         ur0[:,j]=dur(r0, u0[:,j])
+        urr0[:,j]=dur(r0,ur0[:,j])
     end
 
     # generate y0
@@ -179,20 +165,24 @@ function wavesolve(eqn   :: Equation,
       rout    = Array(Array{T,1},1)
       uout    = Array(Array{T,2},1)
      urout    = Array(Array{T,2},1)
+    urrout    = Array(Array{T,2},1)
     tauout[1] = zero(T)
       tout[1] = t0
       rout[1] = r0
       uout[1] = u0
      urout[1] = ur0
+    urrout[1] = ur0
 
     for (tau,y,dy) in dasslIterator(F, y0, tauout[1]; args...)
         print("$tau\r")
-        t  = y[1]
-        r  = y[2:npts+1]
-        u  = reshape(y[npts+2:end],npts,npde)
-        ur = zero(u)
+        t   = y[1]
+        r   = y[2:npts+1]
+        u   = reshape(y[npts+2:end],npts,npde)
+        ur  = zero(u)
+        urr = zero(u)
         for j=1:npde
-            ur[:,j]=dur(r,u[:,j])
+             ur[:,j]=dur(r, u[:,j])
+            urr[:,j]=dur(r,ur[:,j])
         end
 
         push!(tauout, tau)
@@ -200,14 +190,16 @@ function wavesolve(eqn   :: Equation,
         push!(rout,   r  )
         push!(uout,   u  )
         push!(urout,  ur )
+        push!(urrout, urr )
 
         if stopcondition(u) || tau > taumax
             break
         end
     end
 
-    return tauout, tout, rout, uout, urout
+    return tauout, tout, rout, uout, urout, urrout
 
 end
 
-include("equations.jl")
+include("equations-ym.jl")
+include("equations-wm.jl")
