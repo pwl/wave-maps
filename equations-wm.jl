@@ -4,27 +4,30 @@ type WMEquation <: Equation
     sundman :: Function
     monitor :: Function
     d :: Int
+    profile :: Function
 
     function WMEquation(d::Int)
-
-        function s(r,u,ur)
-            urr=dur(r,ur)
-            1/sqrt(ur[1].^2+1)
-        end
-
-        function m(r,u,ur)
-            urr=dur(r,ur)
-            M=sqrt(1.+abs(ur).^2+abs(urr))
-        end
+        s(r,u,ur)=1/sqrt(ur[1]^2+1)
+        m(r,u,ur)=sqrt(1.+abs(ur).^2)
+        phi0(y)=2*atan(y/sqrt(d-2))
 
         this = new()
-        this.rhs=rhsYM(d)
+        this.rhs=rhsWM(d,1)
         this.npde=2
         this.d=d
         this.sundman = s
         this.monitor = m
+        this.profile = phi0
         return this
     end
+end
+
+# compute the blow-up time for this particular equation
+function blowuptime(res::Results,eqn::WMEquation)
+    d  = eqn.d
+    t  = res.t[end]
+    ur = res.ur[end][1,1]
+    T=t+2/sqrt(d-2)/ur # crude estimate on blow-up time
 end
 
 function rhsWM(d::Int,version::Int)

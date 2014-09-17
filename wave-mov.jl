@@ -1,9 +1,15 @@
 using DASSL
 using ArrayViews
 
-include("discretization.jl")
 
 abstract Equation
+
+include("discretization.jl")
+include("results.jl")
+
+# the particular equations, to be removed for the packed version
+include("equations-ym.jl")
+include("equations-wm.jl")
 
 function extracty(y,dy,npts,npde)
     t   =  y[1]
@@ -135,17 +141,12 @@ function wavesolve(eqn   :: Equation,
 
     # generate initial data
     t0 = zero(T)
+    tau0 = zero(T)
     dr = convert(T,(rspan[2]-rspan[1])/(npts-1))
     r0 = [rspan[1]:dr:rspan[2]]
     r0 = meshinit(eqn, r0, uinit; args...)
     u0 = zeros(npts,npde)
     u0[:,1]=uinit(r0)
-    ur0=zero(u0)
-    urr0=zero(u0)
-    for j=1:npde
-         ur0[:,j]=dur(r0, u0[:,j])
-        urr0[:,j]=dur(r0,ur0[:,j])
-    end
 
     # generate y0
     ny=npts*(npde+1)+1
@@ -159,47 +160,24 @@ function wavesolve(eqn   :: Equation,
 
     F=newF(eqn; args...)
 
-    # prepare the output arrays
-    tauout    = Array(T,1)
-      tout    = Array(T,1)
-      rout    = Array(Array{T,1},1)
-      uout    = Array(Array{T,2},1)
-     urout    = Array(Array{T,2},1)
-    urrout    = Array(Array{T,2},1)
-    tauout[1] = zero(T)
-      tout[1] = t0
-      rout[1] = r0
-      uout[1] = u0
-     urout[1] = ur0
-    urrout[1] = ur0
+    # prepare the results
+    res = Results{T}()
+    push(res,tau0,t0,r0,u0)
 
-    for (tau,y,dy) in dasslIterator(F, y0, tauout[1]; args...)
+    for (tau,y,dy) in dasslIterator(F, y0, tau0; args...)
         print("$tau\r")
         t   = y[1]
         r   = y[2:npts+1]
         u   = reshape(y[npts+2:end],npts,npde)
-        ur  = zero(u)
-        urr = zero(u)
-        for j=1:npde
-             ur[:,j]=dur(r, u[:,j])
-            urr[:,j]=dur(r,ur[:,j])
-        end
-
-        push!(tauout, tau)
-        push!(tout,   t  )
-        push!(rout,   r  )
-        push!(uout,   u  )
-        push!(urout,  ur )
-        push!(urrout, urr )
+        push(res,tau,t,r,u)
 
         if stopcondition(u) || tau > taumax
             break
         end
     end
 
-    return tauout, tout, rout, uout, urout, urrout
+    finalize!(res,eqn)
+
+    return res
 
 end
-
-include("equations-ym.jl")
-include("equations-wm.jl")
