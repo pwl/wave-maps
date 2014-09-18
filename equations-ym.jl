@@ -8,8 +8,9 @@ type YMEquation <: Equation
     d :: Int
 
     profile :: Function
-    a :: Float64
-    b :: Float64
+    a
+    b
+    phi0_yy
 
     function YMEquation(d::Int)
 
@@ -43,6 +44,7 @@ type YMEquation <: Equation
         this.profile = profile
         this.a = a
         this.b = b
+        this.phi0_yy = 2a/b
         return this
     end
 end
@@ -60,4 +62,8 @@ function rhsYM(d)
         return dudt
     end
     return rhs
+end
+
+function blowuptime(res::Results,eqn::YMEquation)
+    T=res.t[end]+sqrt(eqn.phi0_yy/res.urr[end][1,1])
 end
