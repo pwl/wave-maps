@@ -40,8 +40,8 @@ function push{T<:Real}(res :: Results{T},
     urr = zero(u)
 
     for j=1:size(u,2)
-         ur[:,j]=dur(r, u[:,j])
-        urr[:,j]=dur(r,ur[:,j])
+        dur!(view(ur ,:,j),r,view(u ,:,j))
+        dur!(view(urr,:,j),r,view(ur,:,j))
     end
 
     push!(res.tau, tau )

@@ -1,7 +1,6 @@
 using DASSL
 using ArrayViews
 
-
 abstract Equation
 
 include("discretization.jl")
@@ -14,19 +13,23 @@ include("equations-wm.jl")
 function extracty(y,dy,npts,npde)
     t   =  y[1]
     dt  = dy[1]
-    r   =  y[2:npts+1]
-    dr  = dy[2:npts+1]
-    u   = reshape(  y[npts+2:end], npts, npde)
-    du  = reshape( dy[npts+2:end], npts, npde)
+    r   = view( y,2:npts+1)
+    dr  = view(dy,2:npts+1)
+    u   = reshape_view( view( y,npts+2:length(y)), (npts, npde))
+    du  = reshape_view( view(dy,npts+2:length(y)), (npts, npde))
     return t, dt, r, dr, u, du
 end
 
 function computederivatives(r,dr,u,du)
     dudr = zero(u)          # du/dr
+    dudt = zero(u)
     for j = 1:size(u,2)
-        dudr[:,j] = dur(r,u[:,j])
+        dur!(view(dudr,:,j),r,view(u,:,j))
+        for i = 1:size(u,1)
+            dudt[i,j] = du[i,j]-dr[i]*dudr[i,j]
+        end
     end
-    dudt = du-dr.*dudr      # du/dt=u_t-dr/dt*u_r
+    # dudt = du-dr.*dudr      # du/dt=u_t-dr/dt*u_r
     return dudr, dudt
 end
 
@@ -36,7 +39,9 @@ function smoothen(M; passes = 4, args...)
         return M
     else
         Msmooth = zero(M)
-        Msmooth[2:end-1]=(M[1:end-2]+2M[2:end-1]+M[3:end])/4
+        @simd for i = 2:length(M)-1
+            @inbounds Msmooth[i]=(M[i-1]+2M[i]+M[i+1])/4
+        end
         Msmooth[1]=(M[1]+M[2])/2
         Msmooth[end]=(M[end-1]+M[end])/2
         return smoothen(Msmooth, passes=passes-1)
@@ -58,8 +63,10 @@ end
 function physicalres(rhs,r,u,dudt,gval)
     rhsval = rhs(r,u)
     npts, npde = size(dudt)
-    resu = -dudt+gval.*rhsval
-    resu[1,:] = u[1,:]          # enforce boundary conditions u(0,t)=0
+    resu = -dudt+gval*rhsval
+    for j = 1:size(u,2)
+        resu[1,j] = u[1,j]          # enforce boundary conditions u(0,t)=0
+    end
     return reshape(resu,npts*npde)
 end
 
@@ -76,8 +83,8 @@ function newF(eqn::Equation;
         t, dt, r, dr, u, du = extracty(y,dy,npts,npde)
         dudr, dudt = computederivatives(r,dr,u,du)
 
-        M    = smoothen(eqn.monitor(r,u[:,1],dudr[:,1]); args...)
-        gval = eqn.sundman(r,u[:,1],dudr[:,1])
+        M    = smoothen(eqn.monitor(r,view(u,:,1),view(dudr,:,1)); args...)
+        gval = eqn.sundman(r,view(u,:,1),view(dudr,:,1))
 
         res  = zero(y)
         res[1]          = dt-gval                                  # Sundman transform equations
@@ -103,9 +110,12 @@ function meshinit(eqn,
     npts = length(r0)
     dxi  = convert(T,1/(npts-1))
 
+    ur = zero(r0)
+
     function F(t,r,dr)
         u    = uinit(r)
-        M    = smoothen(eqn.monitor(r,u,dur(r,u)); args...)
+        dur!(ur,r,u)
+        M    = smoothen(eqn.monitor(r,u,ur); args...)
         res  = copy(dr)
         for i = 2:npts-1
             res[i]=epsilon*(dr[i]*dxi^2-gamma*(dr[i-1]+dr[i+1]-2*dr[i]))-( (M[i+1]+M[i])*(r[i+1]-r[i])-(M[i]+M[i-1])*(r[i]-r[i-1]) )
