@@ -1,6 +1,4 @@
-using ArrayViews
-
-type YMEquation <: Equation
+type YMEquation1 <: YMEquation
     rhs  :: Function
     npde :: Int
     sundman :: Function
@@ -12,7 +10,7 @@ type YMEquation <: Equation
     b
     phi0_yy
 
-    function YMEquation(d::Int)
+    function YMEquation1(d::Int)
 
         function s(r,u,ur)
             urr0=zero(r[1:5])
@@ -62,8 +60,4 @@ function rhsYM(d)
         return dudt
     end
     return rhs
-end
-
-function blowuptime(res::Results,eqn::YMEquation)
-    T=res.t[end]+sqrt(eqn.phi0_yy/res.urr[end][1,1])
 end

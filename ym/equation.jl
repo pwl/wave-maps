@@ -1,4 +1,13 @@
-include("plot.jl")
+using ArrayViews
+
+abstract YMEquation <: Equation
+
+include("equation-1.jl")
+include("equation-2.jl")
+
+function blowuptime(res::Results,eqn::YMEquation)
+    T=res.t[end]+sqrt(eqn.phi0_yy/res.urr[end][1,1])
+end
 
 function plotconvergencerate(res::Results,eqn::YMEquation;fit=false,args...)
 

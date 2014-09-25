@@ -62,11 +62,51 @@ function selfsimilary(r,s,eqn::Equation)
     return exp(s)*r
 end
 
-function finalize!(res::Results,eqn::Equation)
-    res.T = blowuptime(res,eqn)
+function setT(res::Results,eqn::Equation,T)
+    res.T = T
     res.s = -log(res.T.-res.t)
-    res.npts = length(res.r[1])
     for i = 1:length(res.t)
-        push!(res.y,selfsimilary(res.r[i],res.s[i],eqn))
+        res.y[i]=selfsimilary(res.r[i],res.s[i],eqn)
     end
+end
+
+function finalize!(res::Results,eqn::Equation)
+    res.npts = length(res.r[1])
+    res.y = copy(res.r)         # allocate the space for res.y
+    setT(res,eqn,blowuptime(res,eqn))
+end
+
+function save(res::Results,fn::String;
+              every=1)          # save only `every` step
+    f = open(fn,"w")
+    write(f,"# [tau] [t] [r] [y] [u_1] [ur_1] [urr_1] ... [u_N] [ur_N] [urr_N]")
+    for line = 1:every:length(res.t)
+        outputsolblock(f,res,line)
+    end
+    close(f)
+end
+
+function outputsolblock(f,res,line)
+    write(f,"#t= $(res.t[line])\n")
+    write(f,"#s= $(res.s[line])\n")
+    for i = 1:length(res.r)
+        outputsolline(f,
+                      res.tau[line],
+                      res.t[line],
+                      res.r[i][line],
+                      res.y[i][line],
+                      res.u[i][:,line],
+                      res.ur[i][:,line],
+                      res.urr[i][:,line])
+    end
+    write(f,"\n\n\n")
+end
+
+function outputsolline(f,tau,t,r,y,u,ur,urr)
+    write(f,"$tau $t ")
+    write(f,"$r $y ")
+    for i = 1:length(u)
+        write(f, "$(u[i]) $(ur[i]) $(urr[i]) ")
+    end
+    write(f,"\n")
 end

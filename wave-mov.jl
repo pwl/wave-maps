@@ -7,8 +7,7 @@ include("discretization.jl")
 include("results.jl")
 
 # the particular equations, to be removed for the packed version
-include("equations-ym.jl")
-include("equations-wm.jl")
+include("equations.jl")
 
 function extracty(y,dy,npts,npde)
     t   =  y[1]
@@ -143,7 +142,7 @@ function wavesolve(eqn   :: Equation,
                    rspan = [0,pi],
                    T     = Float64,
                    taumax = 20,
-                   stopcondition = u->(abs(u[2,1]) > 1/5),
+                   stopcondition = u->false,
                    args...)
     npde = eqn.npde
 
