@@ -4,8 +4,8 @@ at0="wm/d4-npts800/at0.dat"
 soln="wm/d4-npts800/soln.dat"
 mode="../modes/mode_d4_n1.dat"
 
-set output "mode.eps"
-set terminal eps
+# set output "mode.pdf"
+# set terminal pdf
 
 d=4
 phi0(y)=2*atan(y/sqrt(d-2))
@@ -29,14 +29,18 @@ fit [2:smax] f() withouterrors @at0 u 3:(log(abs($6))) via C,L1,D,L2
 set nodisplay
 
 set xrange [0:2]
+set nolog
+set yrange [*:*]
+set yformat auto
 set title "First mode"
-set xlabel "$\frac{r}{T-t}$"
+set title ""
+set xlabel "$y$"
 set key top left
 
 # plot soln u 2:3 w l t ""
 # replot soln u 2:(phi0($2)) w l t ""
-plot mode u 1:(-$2*exp(flin(s0))) w l lt 2 c BrickRed lw 1.2 t "$C_1 (T-t)^{-\lambda_1}v_1\left(\frac{r}{T-t}\right)$"
-replot soln u 2:($3-phi0($2)) i ind w p pt 3 ps .4 c Black every 10 t "$u(r,t)-\phi_0\left(\frac{r}{T-t}\right)$"
+plot soln u 2:($3-phi0($2)) i ind w p pt 3 ps .4 c Black every 10 t "$U(y,s)-\phi_0\left(y\right)$"
+replot mode u 1:(-$2*exp(flin(s0))) w l lt 2 c BrickRed lw 1.2 t "$Ce^{\lambda_1 s}v_1\left(y\right)$"
 
 set display
 refresh
