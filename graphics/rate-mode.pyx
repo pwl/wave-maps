@@ -2,7 +2,7 @@ set output "rate-mode.pdf"
 set terminal pdf
 
 set multiplot
-sz = 6.5
+sz = 5
 set size sz ratio 1
 set nodisplay
 
