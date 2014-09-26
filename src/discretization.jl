@@ -30,33 +30,6 @@ function dur!(ur,r,u)
     return ur
 end
 
-function durr(r,u)
-    order = 2
-    npts=length(r)
-    urr=zero(u)
-    Du=zeros(eltype(u),1+2*order)
-    h =zeros(eltype(u),1+2*order)
-    for i = 1:npts
-        if i == 1
-            urr[i]=0
-        elseif i == npts
-            Du[1]=u[i-1]-u[i]
-            Du[2]=u[i-2]-u[i]
-             h[1]=r[i-1]-r[i]
-             h[2]=r[i-2]-r[i]
-            urr[i]=(2*Du[1])/(h[1]*(h[1] - h[2])) - (2*Du[2])/((h[1] - h[2])*h[2])
-        else
-            Du[1]=u[i-1]-u[i]
-            Du[3]=u[i+1]-u[i]
-             h[1]=r[i-1]-r[i]
-             h[3]=r[i+1]-r[i]
-            urr[i]=(2*Du[1])/(h[1]*(h[1] - h[3])) - (2*Du[3])/((h[1] - h[3])*h[3])
-        end
-    end
-
-    return urr
-end
-
 # we assume that u is a symmetric function, i.e. u(r)=u(-r)
 function L(d,r,u;order=2, args...)
     npts = length(r)

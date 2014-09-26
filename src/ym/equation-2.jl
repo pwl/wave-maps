@@ -57,7 +57,6 @@ function rhsYM2(d)
         for i=2:npts-1
             dudt[i,1] = u[i,2]
             dudt[i,2] = Lu[i]+u1[i]/r[i]^2*((d-1)-d*(1-r[i]*u1[i])*(2-r[i]*u1[i]))
-            # dudt[i,2] = Lu[i]-(d+1)*u1[i]/r[i]^2+d*u1[i]^2*(3/r[i]-u1[i])
         end
         return dudt
     end

@@ -2,3 +2,5 @@
 *.png
 *.eps
 *.pdf
+*.ser
+data

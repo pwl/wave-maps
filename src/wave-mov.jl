@@ -6,7 +6,7 @@ abstract Equation
 include("discretization.jl")
 include("results.jl")
 
-# the particular equations, to be removed for the packed version
+# the particular equations, to be removed for the package version
 include("equations.jl")
 
 function extracty(y,dy,npts,npde)
@@ -28,7 +28,6 @@ function computederivatives(r,dr,u,du)
             dudt[i,j] = du[i,j]-dr[i]*dudr[i,j]
         end
     end
-    # dudt = du-dr.*dudr      # du/dt=u_t-dr/dt*u_r
     return dudr, dudt
 end
 
@@ -52,7 +51,7 @@ function movingmeshres(r,dr,M,gamma,gval,epsilon)
     dxi  = 1/(npts-1)
     resr = zero(dr)          # residua of moving mesh
     for i = 2:npts-1
-        resr[i]   = (dr[i]-gamma*(dr[i-1]+dr[i+1]-2*dr[i])/dxi^2)-gval / epsilon*( (M[i+1]+M[i])*(r[i+1]-r[i])/dxi-(M[i]+M[i-1])*(r[i]-r[i-1])/dxi )/dxi
+        resr[i]   = (dr[i]-gamma*(dr[i-1]+dr[i+1]-2*dr[i])/dxi^2)-gval/epsilon*( (M[i+1]+M[i])*(r[i+1]-r[i])/dxi-(M[i]+M[i-1])*(r[i]-r[i-1])/dxi )/dxi
     end
     resr[ 1 ] =  r[ 1 ]   # mesh boundary conditions
     resr[end] = dr[end]

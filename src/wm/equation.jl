@@ -9,13 +9,13 @@ type WMEquation <: Equation
     # derivate of the profile at y=0
     dphi0 :: Float64
 
-    function WMEquation(d::Int,version::Int)
+    function WMEquation(d::Int)
         s(r,u,ur)=1/sqrt(ur[1]^2+1)
         m(r,u,ur)=sqrt(1.+abs(ur).^2)
         phi0(y)=2*atan(y/sqrt(d-2))
 
         this = new()
-        this.rhs=rhsWM(d,version)
+        this.rhs=rhsWM(d)
         this.npde=2
         this.d=d
         this.sundman = s
@@ -34,8 +34,8 @@ function blowuptime(res::Results,eqn::WMEquation)
     T=t+2/sqrt(d-2)/ur # crude estimate on blow-up time
 end
 
-function rhsWM(d::Int,version::Int)
-    function rhsv1(r,u)
+function rhsWM(d::Int)
+    function rhsWM(r,u)
         npts = length(r)
         dudt = zero(u)
         Lu = L(d,r,view(u,:,1),order=2)
@@ -45,43 +45,7 @@ function rhsWM(d::Int,version::Int)
         end
         return dudt
     end
-
-    function rhsv2(r,u)
-        npts = length(r)
-        dudt = zero(u)
-        u_rr   = durr(r,u[:,1])
-        ubyr   = u[:,1]./r
-        ubyr[1]= dur(r[1:3],u[1:3,1])[1]
-        ubyr_r = (d-1)*dur(r,ubyr)
-        nonln  = (d-1)*(2u[:,1]-sin(2u[:,1]))./r.^2/2
-
-        dudt[:,1] = u[:,2]
-        dudt[:,2] = u_rr+ubyr_r+nonln
-
-        return dudt
-    end
-
-    function rhsv3(r,u)
-        npts = length(r)
-        u1   = view(u,:,1)
-        Lu   = Lu2(2,r,u1)
-        ubyr   = u1./r
-        ubyr[1]= dur(r[1:3],u[1:3,1])[1]
-        ubyr_r = (d-2)*dur(r,ubyr)
-        nonln  = (d-1)*(2u1-sin(2u1))./r.^2/2
-        dudt = zero(u)
-        dudt[:,1] = u[:,2]
-        dudt[:,2] = Lu+ubyr_r+nonln
-        dudt[1,:] = 0
-        dudt[end,:] = 0
-        return dudt
-    end
-
-    if     version == 1 return rhsv1
-    elseif version == 2 return rhsv2
-    elseif version == 3 return rhsv3
-    else                return rhsv3
-    end
+    return rhsWM
 end
 
 function plotmode(res::Results,eqn::WMEquation,s0;xrange=[0:2],args...)
@@ -101,7 +65,8 @@ end
 
 function getmode(eqn::WMEquation)
     n = 1
-    f = open("modes/mode_d$(eqn.d)_n$(n).dat","r")
+    # @todo path relative to the root of the repository
+    f = open("src/wm/modes/mode_d$(eqn.d)_n$(n).dat","r")
     mode = readdlm(f)
     close(f)
     return mode
@@ -144,7 +109,7 @@ function summarize(res::Results,eqn::WMEquation,s0)
     tab[1,1]=plotmesh(res,eqn,xrange=[1e-8,pi],yrange=[0,20])
 
     # plot the eigenmode
-    tab[1,2]=plotmode(res,eqn,xrange=[0,2])
+    tab[1,2]=plotmode(res,eqn,s0,xrange=[0,2])
 
     # plot the convergence rate to the self-similar solution
     tab[2,1]=plotconvergencerate(res,eqn)
