@@ -1,49 +1,23 @@
-function outputat0line(f,tau,t,ur,T,d)
-    s = -log(T-t)
-    rate = ur[1]*exp(-s)-2/sqrt(d-2)
-
-    write(f,"$tau $t $s ")
-    for i = 1:length(ur)
-        write(f, "$(ur[i]) ")
+# this method saves the values of solution at r=0
+function saveat0(res::Results,fn::String)
+    open(fn,"w") do f
+        write(f,"[t] [s] [tau] [u] [ur] [urr] ... [uN] [urN] [urrN]\n")
+        for line = 1:length(res.t)
+            saveat0line(f,
+                        res.t[line],
+                        res.s[line],
+                        res.tau[line],
+                        vec(res.u[line][1,:]),
+                        vec(res.ur[line][1,:]),
+                        vec(res.urr[line][1,:]))
+        end
     end
-    write(f,"$rate $T\n")
 end
 
-function outputat0(tau,t,ur,d,T,fn;every=1)
-    f = open(fn,"w")
-    write(f,"# [tau] [t] [s] [ur] [urt] [rate] [T]\n")
-    for i = 1:every:length(t)
-        outputat0line(f,tau[i],t[i],ur[i][1,:],T,d)
-    end
-    close(f)
-end
-
-function outputsolline(tau,t,r,u,ur,T,f)
-    y = r/(T-t)
-    write(f,"$r $y ")
+function saveat0line(f,t,s,tau,u,ur,urr)
+    write(f,"$t $s $tau ")
     for i = 1:length(u)
-        uval = u[i]
-        urval = ur[i]
-        write(f, "$uval $urval ")
+        write(f,"$(u[i]) $(ur[i]) $(urr[i])")
     end
-    write(f,"$tau $t $T")
     write(f,"\n")
-end
-
-function outputsolblock(tau,t,r,u,ur,T,f)
-    write(f,"#t= $t\n")
-    write(f,"#s= $(-log(T-t))\n")
-    for i = 1:length(r)
-        outputsolline(tau,t,r[i],u[i,:],ur[i,:],T,f)
-    end
-    write(f,"\n\n\n")
-end
-
-function outputsol(tau,t,r,u,ur,T,fn;every=1)
-    f = open(fn,"w")
-    write(f,"# [r] [y] [u] [ur] [ut] [urt] [tau] [t] [T]")
-    for i = 1:every:length(t)
-        outputsolblock(tau[i],t[i],r[i],u[i],ur[i],T,f)
-    end
-    close(f)
 end

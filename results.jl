@@ -78,32 +78,33 @@ end
 
 function save(res::Results,fn::String;
               every=1)          # save only `every` step
-    f = open(fn,"w")
-    write(f,"# [tau] [t] [r] [y] [u_1] [ur_1] [urr_1] ... [u_N] [ur_N] [urr_N]")
-    for line = 1:every:length(res.t)
-        outputsolblock(f,res,line)
+    open(fn,"w") do f
+        write(f,"# [t] [s] [tau] [r] [y] [u_1] [ur_1] [urr_1] ... [u_N] [ur_N] [urr_N]\n")
+        for line = 1:every:length(res.t)
+            outputsolblock(f,res,line)
+        end
     end
-    close(f)
 end
 
-function outputsolblock(f,res,line)
+function outputsolblock(f::IOStream,res::Results,line::Int)
     write(f,"#t= $(res.t[line])\n")
     write(f,"#s= $(res.s[line])\n")
-    for i = 1:length(res.r)
+    for i = 1:length(res.r[line])
         outputsolline(f,
-                      res.tau[line],
                       res.t[line],
-                      res.r[i][line],
-                      res.y[i][line],
-                      res.u[i][:,line],
-                      res.ur[i][:,line],
-                      res.urr[i][:,line])
+                      res.s[line],
+                      res.tau[line],
+                      res.r[line][i],
+                      res.y[line][i],
+                      vec(res.u[line][i,:]),
+                      vec(res.ur[line][i,:]),
+                      vec(res.urr[line][i,:]))
     end
     write(f,"\n\n\n")
 end
 
-function outputsolline(f,tau,t,r,y,u,ur,urr)
-    write(f,"$tau $t ")
+function outputsolline(f::IOStream,t,s,tau,r,y,u,ur,urr)
+    write(f,"$t $s $tau ")
     write(f,"$r $y ")
     for i = 1:length(u)
         write(f, "$(u[i]) $(ur[i]) $(urr[i]) ")
